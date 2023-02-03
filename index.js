@@ -442,8 +442,13 @@ function amendDocs(doc, path, props) {
     if (propDescriptor.type.name === "enum" && propDescriptor.type.computed) {
       const oldVal = propDescriptor.type.value;
       const newVal = getComputedPropVal(propDescriptor.type.value) || oldVal;
-      propDescriptor.type.value = newVal;
-      propDescriptor.type.computed = false;
+
+      if (Array.isArray(newVal)) {
+        propDescriptor.type.value = newVal.map((node) => node.value);
+      } else {
+        propDescriptor.type.value = newVal;
+      }
+      // propDescriptor.type.computed = false;
     }
   });
 }
@@ -454,77 +459,75 @@ function amendDocs(doc, path, props) {
  * @method createImportHandler
  * @param  {String} componentPath  Absolute path of the react component
  */
-function createImportHandler(componentPath) {
-  return (doc, path) => {
-    const root = path.scope.getGlobalScope().node;
-    let propTypesPath, propTypesFilePath, propTypesAST;
+function createImportHandler(doc, path, parser, componentPath) {
+  const root = path.scope.getGlobalScope().node;
+  let propTypesPath, propTypesFilePath, propTypesAST;
 
-    propTypesPath = utils.getMemberValuePath(path, "propTypes");
-    propTypesAST = root;
-    propTypesFilePath = componentPath;
+  propTypesPath = utils.getMemberValuePath(path, "propTypes");
+  propTypesAST = root;
+  propTypesFilePath = componentPath;
 
-    if (!propTypesPath) {
-      return;
-    }
+  if (!propTypesPath) {
+    return;
+  }
 
-    const propsNameIdentifier = propTypesPath.node.name;
-    propTypesPath = utils.resolveToValue(propTypesPath);
+  const propsNameIdentifier = propTypesPath.node.name;
+  propTypesPath = utils.resolveToValue(propTypesPath);
 
-    if (!propTypesPath) {
-      return;
-    }
+  if (!propTypesPath) {
+    return;
+  }
 
-    if (!types.ObjectExpression.check(propTypesPath.node)) {
-      //First resolve dependencies against component path
-      propTypesFilePath = resolveFilePath(
-        componentPath,
-        propTypesPath.node.source.value
-      );
-      const propTypesSrc = getSrc(propTypesFilePath);
-      propTypesAST = getAST(propTypesSrc);
-      const importedPropTypes = getIdentifiers(propTypesAST)[
-        propsNameIdentifier
-      ];
-
-      if (!importedPropTypes) {
-        return;
-      }
-
-      propTypesPath = utils.resolveToValue(importedPropTypes.path);
-
-      //updating doc object with external props
-      amendPropTypes(doc, propTypesPath);
-    }
-
-    const computedPropNames = getComputedPropValuesFromDoc(doc);
-
-    if (!computedPropNames) {
-      return;
-    }
-
-    const importSpecifiers = getImports(propTypesAST);
-
-    if (!importSpecifiers) {
-      return;
-    }
-
-    const filteredProps = filterSpecifiers(importSpecifiers, computedPropNames);
-
-    if (!Object.keys(filteredProps).length) {
-      return;
-    }
-
-    const resolvedImports = resolveDependencies(
-      filteredProps,
-      propTypesFilePath
+  if (!types.ObjectExpression.check(propTypesPath.node)) {
+    //First resolve dependencies against component path
+    propTypesFilePath = resolveFilePath(
+      componentPath,
+      propTypesPath.node.source.value
     );
+    const propTypesSrc = getSrc(propTypesFilePath);
+    propTypesAST = getAST(propTypesSrc);
+    const importedPropTypes = getIdentifiers(propTypesAST)[
+      propsNameIdentifier
+    ];
 
-    if (!resolvedImports.length) {
+    if (!importedPropTypes) {
       return;
     }
 
-    amendDocs(doc, propTypesPath, resolvedImports);
-  };
+    propTypesPath = utils.resolveToValue(importedPropTypes.path);
+
+    //updating doc object with external props
+    amendPropTypes(doc, propTypesPath);
+  }
+
+  const computedPropNames = getComputedPropValuesFromDoc(doc);
+
+  if (!computedPropNames) {
+    return;
+  }
+
+  const importSpecifiers = getImports(propTypesAST);
+
+  if (!importSpecifiers) {
+    return;
+  }
+
+  const filteredProps = filterSpecifiers(importSpecifiers, computedPropNames);
+
+  if (!Object.keys(filteredProps).length) {
+    return;
+  }
+
+  const resolvedImports = resolveDependencies(
+    filteredProps,
+    propTypesFilePath
+  );
+
+  if (!resolvedImports.length) {
+    return;
+  }
+
+  amendDocs(doc, propTypesPath, resolvedImports);
 }
 
 module.exports = createImportHandler;
